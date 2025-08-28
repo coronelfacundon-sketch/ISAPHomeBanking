@@ -46,36 +46,33 @@ export default function LoginPage({ user }) {
   return (
     <div style={{ maxWidth: '400px', margin: '0 auto' }}>
       <h1 style={{ marginBottom: '1rem' }}>Ingresar</h1>
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <label>
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </label>
-        <label>
-          Contraseña
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </label>
-        <button
-          type="submit"
-          style={{ padding: '0.6rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Entrar
-        </button>
-      </form>
-      {error && <p style={{ color: 'salmon', marginTop: '1rem' }}>{error}</p>}
-      {message && <p style={{ color: 'lightyellow', marginTop: '1rem' }}>{message}</p>}
+      <div className="card">
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label>
+            Email
+            <input
+              type="email"
+              className="input"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            Contraseña
+            <input
+              type="password"
+              className="input"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          <button type="submit" className="button">Entrar</button>
+        </form>
+        {error && <p className="msg-error">{error}</p>}
+        {message && <p className="msg-success">{message}</p>}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import '../styles/globals.css';
+import '../styles/theme.css';
 import Layout from '../components/Layout';
 import useUser from '../hooks/useUser';
 

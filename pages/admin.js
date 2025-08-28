@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/router';
 
@@ -11,7 +11,9 @@ export default function AdminPage({ user }) {
   const [pendingClients, setPendingClients] = useState([]);
   const [loanRequests, setLoanRequests] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  // Holds all non‑entity accounts so they can be filtered client‑side
   const [accounts, setAccounts] = useState([]);
+  // Holds the amount entered for each account when crediting
   const [creditAmount, setCreditAmount] = useState({});
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -81,27 +83,35 @@ export default function AdminPage({ user }) {
     setPendingClients((prev) => prev.filter((c) => c.id !== client.id));
   };
 
-  // Search accounts by alias, cbu or email
-  const searchAccounts = async (e) => {
-    e.preventDefault();
-    setError('');
-    setMessage('');
-    const term = searchTerm.trim();
-    if (!term) {
-      setAccounts([]);
-      return;
-    }
-    // Search by alias or cbu; also join users to get email
-    const { data, error: accErr } = await supabase
-      .from('accounts')
-      .select('uid, alias, cbu, balance, company_name, type, users(email)')
-      .or(`alias.ilike.%${term}%,cbu.ilike.%${term}%`);
-    if (accErr) {
-      setError(accErr.message);
-    } else {
-      setAccounts(data);
-    }
-  };
+  // Fetch all client accounts on mount so the employee can see a full list
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      if (!user || user.role !== 'bank') return;
+      const { data, error: accErr } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('is_entity', false);
+      if (!accErr && data) {
+        setAccounts(data);
+      }
+    };
+    fetchAccounts();
+  }, [user]);
+
+  // Derived list of accounts filtered by search term.  When searchTerm is empty,
+  // all accounts are shown.  The search is case insensitive over alias, CBU
+  // and company name.
+  const filteredAccounts = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return accounts;
+    return accounts.filter((acc) => {
+      return (
+        acc.alias.toLowerCase().includes(term) ||
+        acc.cbu.toLowerCase().includes(term) ||
+        acc.company_name.toLowerCase().includes(term)
+      );
+    });
+  }, [accounts, searchTerm]);
 
   // Credit an account with specified amount
   const creditAccount = async (acc) => {
@@ -220,30 +230,25 @@ export default function AdminPage({ user }) {
   return (
     <div>
       <h1>Panel Administrativo</h1>
-      {/* Pending clients */}
-      <section style={{ marginTop: '1.5rem' }}>
+      {/* Clientes pendientes */}
+      <div className="card">
         <h2>Clientes pendientes</h2>
         {pendingClients.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="table">
             <thead>
               <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Empresa</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Email</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Acción</th>
+                <th>Empresa</th>
+                <th>Email</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
               {pendingClients.map((c) => (
                 <tr key={c.id}>
-                  <td style={{ padding: '0.5rem' }}>{c.company_name}</td>
-                  <td style={{ padding: '0.5rem' }}>{c.email}</td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <button
-                      onClick={() => approveClient(c)}
-                      style={{ padding: '0.4rem 0.8rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                    >
-                      Aprobar
-                    </button>
+                  <td>{c.company_name}</td>
+                  <td>{c.email}</td>
+                  <td>
+                    <button className="button" onClick={() => approveClient(c)}>Aprobar</button>
                   </td>
                 </tr>
               ))}
@@ -252,99 +257,83 @@ export default function AdminPage({ user }) {
         ) : (
           <p>No hay clientes pendientes.</p>
         )}
-      </section>
-      {/* Account search and credit */}
-      <section style={{ marginTop: '2rem' }}>
-        <h2>Buscar cuenta</h2>
-        <form onSubmit={searchAccounts} style={{ display: 'flex', gap: '0.5rem' }}>
+      </div>
+      {/* Cuentas y acreditación */}
+      <div className="card">
+        <h2>Cuentas</h2>
+        <div style={{ maxWidth: '400px', marginBottom: '1rem' }}>
           <input
             type="text"
-            placeholder="Alias o CBU..."
+            className="input"
+            placeholder="Buscar por alias, CBU o empresa..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
           />
-          <button
-            type="submit"
-            style={{ padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Buscar
-          </button>
-        </form>
-        {accounts.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+        </div>
+        {filteredAccounts.length > 0 ? (
+          <table className="table">
             <thead>
               <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Empresa</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Alias</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>CBU</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Saldo</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Acreditar</th>
+                <th>Empresa</th>
+                <th>Alias</th>
+                <th>CBU</th>
+                <th style={{ textAlign: 'right' }}>Saldo</th>
+                <th>Acreditar</th>
               </tr>
             </thead>
             <tbody>
-              {accounts.map((a) => (
+              {filteredAccounts.map((a) => (
                 <tr key={a.uid}>
-                  <td style={{ padding: '0.5rem' }}>{a.company_name}</td>
-                  <td style={{ padding: '0.5rem' }}>{a.alias}</td>
-                  <td style={{ padding: '0.5rem' }}>{a.cbu}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>ARS {(a.balance / 100).toFixed(2)}</td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={creditAmount[a.uid] || ''}
-                      onChange={(e) => setCreditAmount((prev) => ({ ...prev, [a.uid]: e.target.value }))}
-                      style={{ width: '80px', padding: '0.3rem', marginRight: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    <button
-                      onClick={() => creditAccount(a)}
-                      style={{ padding: '0.4rem 0.8rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                    >
-                      Acreditar
-                    </button>
+                  <td>{a.company_name}</td>
+                  <td>{a.alias}</td>
+                  <td>{a.cbu}</td>
+                  <td style={{ textAlign: 'right' }}>ARS {(a.balance / 100).toFixed(2)}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input"
+                        style={{ width: '90px' }}
+                        value={creditAmount[a.uid] || ''}
+                        onChange={(e) => setCreditAmount((prev) => ({ ...prev, [a.uid]: e.target.value }))}
+                      />
+                      <button className="button" onClick={() => creditAccount(a)}>Acreditar</button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        ) : (
+          <p>No hay cuentas disponibles.</p>
         )}
-      </section>
-      {/* Seed entities */}
-      <section style={{ marginTop: '2rem' }}>
+      </div>
+      {/* Entidades públicas */}
+      <div className="card">
         <h2>Entidades públicas</h2>
-        <button
-          onClick={seedEntities}
-          style={{ padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Sembrar/Actualizar
-        </button>
-      </section>
-      {/* Loan requests */}
-      <section style={{ marginTop: '2rem' }}>
+        <button className="button" onClick={seedEntities}>Sembrar/Actualizar</button>
+      </div>
+      {/* Solicitudes de préstamos */}
+      <div className="card">
         <h2>Solicitudes de préstamos</h2>
         {loanRequests.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="table">
             <thead>
               <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Cliente</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Monto</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Acción</th>
+                <th>Cliente</th>
+                <th>Monto</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
               {loanRequests.map((l) => (
                 <tr key={l.id}>
-                  <td style={{ padding: '0.5rem' }}>{l.uid}</td>
-                  <td style={{ padding: '0.5rem' }}>ARS {(l.amount / 100).toFixed(2)}</td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <button
-                      onClick={() => approveLoan(l)}
-                      style={{ padding: '0.4rem 0.8rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                    >
-                      Aprobar
-                    </button>
+                  <td>{l.uid}</td>
+                  <td>ARS {(l.amount / 100).toFixed(2)}</td>
+                  <td>
+                    <button className="button" onClick={() => approveLoan(l)}>Aprobar</button>
                   </td>
                 </tr>
               ))}
@@ -353,9 +342,9 @@ export default function AdminPage({ user }) {
         ) : (
           <p>No hay préstamos pendientes.</p>
         )}
-      </section>
-      {error && <p style={{ color: 'salmon', marginTop: '1rem' }}>{error}</p>}
-      {message && <p style={{ color: 'lightyellow', marginTop: '1rem' }}>{message}</p>}
+      </div>
+      {error && <p className="msg-error">{error}</p>}
+      {message && <p className="msg-success">{message}</p>}
     </div>
   );
 }

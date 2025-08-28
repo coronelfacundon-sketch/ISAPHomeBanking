@@ -131,108 +131,99 @@ export default function HomePage({ user }) {
   return (
     <div>
       <h1>Bienvenido, {user?.company_name}</h1>
+      {/* Card con información de la cuenta */}
       {account ? (
-        <div style={{ backgroundColor: '#013a63', padding: '1rem', borderRadius: '6px', marginTop: '1rem' }}>
+        <div className="card">
           <h2>Cuenta</h2>
-          <p>Alias: {account.alias}</p>
-          <p>CBU: {account.cbu}</p>
-          <p>Saldo: {formatMoney(account.balance)}</p>
-          <p>Estimado en USD: {estimateUSD(account.balance)}</p>
+          <p><strong>Alias:</strong> {account.alias}</p>
+          <p><strong>CBU:</strong> {account.cbu}</p>
+          <p><strong>Saldo:</strong> {formatMoney(account.balance)}</p>
+          <p><strong>Estimado en USD:</strong> {estimateUSD(account.balance)}</p>
         </div>
       ) : (
         <p>Cargando cuenta...</p>
       )}
-      {/* Transfer Form */}
-      <div style={{ marginTop: '2rem' }}>
+      {/* Card de transferencia */}
+      <div className="card">
         <h2>Transferir fondos</h2>
         <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '400px' }}>
           <label>
             Alias o CBU destino
             <input
               type="text"
+              className="input"
               value={transfer.dest}
               onChange={(e) => setTransfer((prev) => ({ ...prev, dest: e.target.value }))}
               required
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
             />
           </label>
           <label>
             Monto (ARS)
             <input
               type="number"
+              className="input"
               min="0"
               step="0.01"
               value={transfer.amount}
               onChange={(e) => setTransfer((prev) => ({ ...prev, amount: e.target.value }))}
               required
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
             />
           </label>
           <label>
             Concepto (opcional)
             <input
               type="text"
+              className="input"
               value={transfer.concept}
               onChange={(e) => setTransfer((prev) => ({ ...prev, concept: e.target.value }))}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
             />
           </label>
-          <button
-            type="submit"
-            style={{ padding: '0.6rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Transferir
-          </button>
+          <button type="submit" className="button">Transferir</button>
         </form>
       </div>
-      {/* Loan Request */}
-      <div style={{ marginTop: '2rem' }}>
+      {/* Card de solicitud de préstamos */}
+      <div className="card">
         <h2>Solicitar préstamo</h2>
         <form onSubmit={handleLoanRequest} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '300px' }}>
           <label>
             Monto (ARS)
             <input
               type="number"
+              className="input"
               min="0"
               step="0.01"
               value={loanAmount}
               onChange={(e) => setLoanAmount(e.target.value)}
               required
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
             />
           </label>
-          <button
-            type="submit"
-            style={{ padding: '0.6rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Solicitar préstamo
-          </button>
+          <button type="submit" className="button">Solicitar préstamo</button>
         </form>
       </div>
-      {/* Recent Movements */}
-      <div style={{ marginTop: '2rem' }}>
+      {/* Card de movimientos recientes */}
+      <div className="card">
         <h2>Movimientos recientes</h2>
         {movements && movements.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="table">
             <thead>
               <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Fecha</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Detalle</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Débito</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Crédito</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Saldo</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Comprobante</th>
+                <th>Fecha</th>
+                <th>Detalle</th>
+                <th style={{ textAlign: 'right' }}>Débito</th>
+                <th style={{ textAlign: 'right' }}>Crédito</th>
+                <th style={{ textAlign: 'right' }}>Saldo</th>
+                <th>Comprobante</th>
               </tr>
             </thead>
             <tbody>
               {movements.map((m) => (
                 <tr key={m.id}>
-                  <td style={{ padding: '0.5rem' }}>{new Date(m.date).toLocaleDateString()}</td>
-                  <td style={{ padding: '0.5rem' }}>{m.concept || m.detail}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{m.debit ? formatMoney(m.debit) : '-'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{m.credit ? formatMoney(m.credit) : '-'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatMoney(m.balance_after)}</td>
-                  <td style={{ padding: '0.5rem' }}>
+                  <td>{new Date(m.date).toLocaleDateString()}</td>
+                  <td>{m.concept || m.detail}</td>
+                  <td style={{ textAlign: 'right' }}>{m.debit ? formatMoney(m.debit) : '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{m.credit ? formatMoney(m.credit) : '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{formatMoney(m.balance_after)}</td>
+                  <td>
                     <a href={`/receipt?tx=${m.tx_id}`} style={{ color: '#4da8da', textDecoration: 'underline' }}>Ver</a>
                   </td>
                 </tr>
@@ -243,12 +234,12 @@ export default function HomePage({ user }) {
           <p>No hay movimientos recientes.</p>
         )}
       </div>
-      {/* Extract link */}
-      <div style={{ marginTop: '2rem' }}>
+      {/* Enlace al extracto completo */}
+      <div className="card" style={{ textAlign: 'center' }}>
         <a href="/extract" style={{ color: '#4da8da', textDecoration: 'underline' }}>Ir al extracto completo</a>
       </div>
-      {error && <p style={{ color: 'salmon', marginTop: '1rem' }}>{error}</p>}
-      {message && <p style={{ color: 'lightyellow', marginTop: '1rem' }}>{message}</p>}
+      {error && <p className="msg-error">{error}</p>}
+      {message && <p className="msg-success">{message}</p>}
     </div>
   );
 }

@@ -48,10 +48,10 @@ export default function ReceiptPage({ user }) {
   return (
     <div>
       <h1>Comprobante de transferencia</h1>
-      {error && <p style={{ color: 'salmon' }}>{error}</p>}
+      {error && <p className="msg-error">{error}</p>}
       {entries.length === 0 && !error && <p>Cargando...</p>}
       {entries.length > 0 && (
-        <div style={{ marginTop: '1rem', backgroundColor: '#013a63', padding: '1rem', borderRadius: '6px' }}>
+        <div className="card">
           <p><strong>Fecha:</strong> {new Date(entries[0].date).toLocaleString()}</p>
           <hr style={{ borderColor: '#055a8c', margin: '1rem 0' }} />
           <div>
@@ -73,10 +73,7 @@ export default function ReceiptPage({ user }) {
           </div>
           <hr style={{ borderColor: '#055a8c', margin: '1rem 0' }} />
           <p><strong>Concepto:</strong> {debitEntry?.concept || debitEntry?.detail || ''}</p>
-          <button
-            onClick={() => window.print()}
-            style={{ marginTop: '1rem', padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
+          <button className="button" style={{ marginTop: '1rem' }} onClick={() => window.print()}>
             Imprimir
           </button>
         </div>

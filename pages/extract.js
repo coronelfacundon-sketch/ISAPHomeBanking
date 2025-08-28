@@ -89,34 +89,33 @@ export default function ExtractPage({ user }) {
   return (
     <div>
       <h1>Extracto de cuenta</h1>
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <label>
-          Desde
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </label>
-        <label>
-          Hasta
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-        </label>
-        <button
-          onClick={fetchExtract}
-          style={{ padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Consultar
-        </button>
+      {/* Filtros de fecha */}
+      <div className="card">
+        <h2>Filtros</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column' }}>
+            Desde
+            <input
+              type="date"
+              className="input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column' }}>
+            Hasta
+            <input
+              type="date"
+              className="input"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </label>
+          <button className="button" onClick={fetchExtract}>Consultar</button>
+        </div>
       </div>
-      {/* Summary */}
-      <div style={{ marginTop: '1.5rem', backgroundColor: '#013a63', padding: '1rem', borderRadius: '6px' }}>
+      {/* Resumen */}
+      <div className="card">
         <h2>Resumen</h2>
         <p>Saldo inicial: {formatMoney(summary.initial)}</p>
         <p>Total débitos: {formatMoney(summary.debits)}</p>
@@ -124,28 +123,28 @@ export default function ExtractPage({ user }) {
         <p>Saldo final: {formatMoney(summary.final)}</p>
         <p>Estimado en USD: {estimateUSD(summary.final)}</p>
       </div>
-      {/* Movements table */}
-      <div style={{ marginTop: '1.5rem' }}>
+      {/* Tabla de movimientos */}
+      <div className="card">
         <h2>Movimientos</h2>
         {movements.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="table">
             <thead>
               <tr>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Fecha</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem' }}>Detalle</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Débito</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Crédito</th>
-                <th style={{ borderBottom: '1px solid #ccc', padding: '0.5rem', textAlign: 'right' }}>Saldo</th>
+                <th>Fecha</th>
+                <th>Detalle</th>
+                <th style={{ textAlign: 'right' }}>Débito</th>
+                <th style={{ textAlign: 'right' }}>Crédito</th>
+                <th style={{ textAlign: 'right' }}>Saldo</th>
               </tr>
             </thead>
             <tbody>
               {movements.map((m) => (
                 <tr key={m.id}>
-                  <td style={{ padding: '0.5rem' }}>{new Date(m.date).toLocaleDateString()}</td>
-                  <td style={{ padding: '0.5rem' }}>{m.concept || m.detail || ''}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{m.debit ? formatMoney(m.debit) : '-'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{m.credit ? formatMoney(m.credit) : '-'}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatMoney(m.balance_after)}</td>
+                  <td>{new Date(m.date).toLocaleDateString()}</td>
+                  <td>{m.concept || m.detail || ''}</td>
+                  <td style={{ textAlign: 'right' }}>{m.debit ? formatMoney(m.debit) : '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{m.credit ? formatMoney(m.credit) : '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{formatMoney(m.balance_after)}</td>
                 </tr>
               ))}
             </tbody>
@@ -154,22 +153,12 @@ export default function ExtractPage({ user }) {
           <p>No hay movimientos en el periodo seleccionado.</p>
         )}
       </div>
-      {/* Export and print */}
-      <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
-        <button
-          onClick={exportCSV}
-          style={{ padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Exportar CSV
-        </button>
-        <button
-          onClick={() => window.print()}
-          style={{ padding: '0.6rem 1rem', backgroundColor: '#026c69', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Imprimir
-        </button>
+      {/* Exportar e imprimir */}
+      <div className="card" style={{ display: 'flex', gap: '1rem' }}>
+        <button className="button" onClick={exportCSV}>Exportar CSV</button>
+        <button className="button" onClick={() => window.print()}>Imprimir</button>
       </div>
-      {error && <p style={{ color: 'salmon', marginTop: '1rem' }}>{error}</p>}
+      {error && <p className="msg-error">{error}</p>}
     </div>
   );
 }
