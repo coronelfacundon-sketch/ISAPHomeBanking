@@ -1,83 +1,64 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/router';
+import { supabase } from '../utils/supabaseClient';
+import ReceiptCard from '../components/ReceiptCard';
+import { currency } from '../utils/money';
 
-/**
- * Receipt page shows a printable receipt for a given transaction. It
- * fetches both sides of the double-entry accounting and renders details
- * such as origin/destination, amounts and balances.
- */
-export default function ReceiptPage({ user }) {
+export default function ReceiptPage() {
   const router = useRouter();
   const { tx } = router.query;
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchEntries = async () => {
-      if (!tx) return;
-      const { data, error: movErr } = await supabase
-        .from('movements')
+    if (!tx) return;
+    (async () => {
+      const { data, error } = await supabase.from('movements')
         .select('*')
-        .eq('tx_id', tx);
-      if (movErr) {
-        setError(movErr.message);
-      } else {
-        setEntries(data);
-      }
-    };
-    fetchEntries();
+        .eq('tx_id', tx)
+        .order('date', { ascending: true });
+      if (error) { setError(error.message); setLoading(false); return; }
+      setEntries(data || []);
+      setLoading(false);
+    })();
   }, [tx]);
 
-  // Helper to format money
-  const formatMoney = (cents) => {
-    return `ARS ${(cents / 100).toFixed(2)}`;
-  };
+  const printIt = () => window.print();
 
-  // Compose details from entries
-  let debitEntry = null;
-  let creditEntry = null;
-  if (entries && entries.length === 2) {
-    // Determine which is debit and credit
-    entries.forEach((e) => {
-      if (e.debit && e.debit > 0) debitEntry = e;
-      if (e.credit && e.credit > 0) creditEntry = e;
-    });
-  }
+  if (loading) return <div className="p-6 text-white">Cargando…</div>;
+  if (error) return <div className="p-6 text-red-300">{error}</div>;
+  if (entries.length === 0) return <div className="p-6 text-white">No se encontraron movimientos para este comprobante.</div>;
+
+  const origin = entries.find(e => e.debit > 0) || entries[0];
+  const dest   = entries.find(e => e.credit > 0) || entries[1];
 
   return (
-    <div>
-      <h1>Comprobante de transferencia</h1>
-      {error && <p className="msg-error">{error}</p>}
-      {entries.length === 0 && !error && <p>Cargando...</p>}
-      {entries.length > 0 && (
-        <div className="card">
-          <p><strong>Fecha:</strong> {new Date(entries[0].date).toLocaleString()}</p>
-          <hr style={{ borderColor: '#055a8c', margin: '1rem 0' }} />
-          <div>
-            <h2>Origen</h2>
-            <p><strong>Empresa:</strong> {debitEntry?.company_name || '-'}</p>
-            <p><strong>Alias:</strong> {debitEntry?.alias || debitEntry?.peer_alias || '-'}</p>
-            <p><strong>CBU:</strong> {debitEntry?.cbu || debitEntry?.peer_cbu || '-'}</p>
-            <p><strong>Monto debitado:</strong> {debitEntry ? formatMoney(debitEntry.debit) : '-'}</p>
-            <p><strong>Saldo posterior:</strong> {debitEntry ? formatMoney(debitEntry.balance_after) : '-'}</p>
-          </div>
-          <hr style={{ borderColor: '#055a8c', margin: '1rem 0' }} />
-          <div>
-            <h2>Destino</h2>
-            <p><strong>Empresa:</strong> {creditEntry?.peer_company || '-'}</p>
-            <p><strong>Alias:</strong> {creditEntry?.peer_alias || '-'}</p>
-            <p><strong>CBU:</strong> {creditEntry?.peer_cbu || '-'}</p>
-            <p><strong>Monto acreditado:</strong> {creditEntry ? formatMoney(creditEntry.credit) : '-'}</p>
-            <p><strong>Saldo posterior:</strong> {creditEntry ? formatMoney(creditEntry.balance_after) : '-'}</p>
-          </div>
-          <hr style={{ borderColor: '#055a8c', margin: '1rem 0' }} />
-          <p><strong>Concepto:</strong> {debitEntry?.concept || debitEntry?.detail || ''}</p>
-          <button className="button" style={{ marginTop: '1rem' }} onClick={() => window.print()}>
-            Imprimir
-          </button>
-        </div>
-      )}
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <link rel="stylesheet" href="/styles/print.css" />
+      <h1 className="text-2xl font-bold mb-4">Comprobante</h1>
+
+      <ReceiptCard
+        origin={{
+          company: origin.peer_company || 'Cuenta origen',
+          alias: origin.peer_alias || '-',
+          cbu: origin.peer_cbu || '-',
+          balance_after: origin.balance_after
+        }}
+        dest={{
+          company: dest?.peer_company || 'Cuenta destino',
+          alias: dest?.peer_alias || '-',
+          cbu: dest?.peer_cbu || '-',
+          balance_after: dest?.balance_after || 0
+        }}
+        tx={tx}
+        when={origin.date}
+      />
+
+      <div className="mt-4 no-print">
+        <button onClick={printIt} className="rounded px-3 py-2 bg-slate-700 hover:bg-slate-600">Imprimir</button>
+        <a href="/extract" className="ml-2 underline">Volver al extracto</a>
+      </div>
     </div>
   );
 }

@@ -1,350 +1,197 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { useRouter } from 'next/router';
+import CreditModal from '../components/CreditModal';
+import { currency } from '../utils/money';
 
-/**
- * Admin page for bank employees. Provides workflows to approve new clients,
- * credit accounts with funds, seed public entity accounts, and approve loans.
- */
-export default function AdminPage({ user }) {
-  const router = useRouter();
-  const [pendingClients, setPendingClients] = useState([]);
-  const [loanRequests, setLoanRequests] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  // Holds all non‑entity accounts so they can be filtered client‑side
+export default function Admin() {
+  const [me, setMe] = useState(null);
+  const [pending, setPending] = useState([]);
   const [accounts, setAccounts] = useState([]);
-  // Holds the amount entered for each account when crediting
-  const [creditAmount, setCreditAmount] = useState({});
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('');
+  const [modal, setModal] = useState({ open: false, account: null });
+  const [loading, setLoading] = useState(false);
 
-  // Redirect unauthorized users
   useEffect(() => {
-    if (!user) return;
-    if (user.role !== 'bank') {
-      router.replace('/');
-    }
-  }, [user, router]);
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { window.location.href = '/'; return; }
 
-  // Load pending clients and loan requests on mount
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user || user.role !== 'bank') return;
-      // Pending clients
-      const { data: clients, error: clientsErr } = await supabase
+      const { data: myRow } = await supabase
         .from('users')
         .select('*')
-        .eq('role', 'client')
-        .eq('status', 'pending');
-      if (!clientsErr) setPendingClients(clients);
-      // Pending loans
-      const { data: loans, error: loansErr } = await supabase
-        .from('loans')
-        .select('id, uid, amount')
-        .eq('status', 'pending');
-      if (!loansErr) setLoanRequests(loans);
-    };
-    fetchData();
-  }, [user]);
-
-  // Approve client: create account with random alias/cbu and update status
-  const approveClient = async (client) => {
-    setError('');
-    setMessage('');
-    // Generate random alias (8 letters + 4 numbers)
-    const alias = `${client.company_name.toLowerCase().replace(/\s+/g, '').slice(0,6)}${Math.floor(1000 + Math.random() * 9000)}`;
-    const cbu = String(Math.floor(10 ** 21 + Math.random() * 9 * 10 ** 21));
-    // Insert account
-    const { error: accErr } = await supabase.from('accounts').insert({
-      uid: client.id,
-      alias,
-      cbu,
-      balance: 0,
-      company_name: client.company_name,
-      type: client.type,
-      is_entity: false
-    });
-    if (accErr) {
-      setError(accErr.message);
-      return;
-    }
-    // Update user status
-    const { error: userErr } = await supabase.from('users').update({
-      status: 'approved',
-      approved_at: new Date().toISOString(),
-      approved_by: user.id
-    }).eq('id', client.id);
-    if (userErr) {
-      setError(userErr.message);
-      return;
-    }
-    setMessage(`Cliente ${client.company_name} aprobado.`);
-    // Refresh pending list
-    setPendingClients((prev) => prev.filter((c) => c.id !== client.id));
-  };
-
-  // Fetch all client accounts on mount so the employee can see a full list
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      if (!user || user.role !== 'bank') return;
-      const { data, error: accErr } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('is_entity', false);
-      if (!accErr && data) {
-        setAccounts(data);
-      }
-    };
-    fetchAccounts();
-  }, [user]);
-
-  // Derived list of accounts filtered by search term.  When searchTerm is empty,
-  // all accounts are shown.  The search is case insensitive over alias, CBU
-  // and company name.
-  const filteredAccounts = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
-    if (!term) return accounts;
-    return accounts.filter((acc) => {
-      return (
-        acc.alias.toLowerCase().includes(term) ||
-        acc.cbu.toLowerCase().includes(term) ||
-        acc.company_name.toLowerCase().includes(term)
-      );
-    });
-  }, [accounts, searchTerm]);
-
-  // Credit an account with specified amount
-  const creditAccount = async (acc) => {
-    setError('');
-    setMessage('');
-    const amount = parseFloat(creditAmount[acc.uid] || '0');
-    if (!amount || amount <= 0) {
-      setError('Ingrese un monto válido para acreditar.');
-      return;
-    }
-    const cents = Math.round(amount * 100);
-    // Use RPC or direct insert: update balance and insert movement
-    // Insert credit movement: we assume a function bank_credit exists; fallback manual
-    try {
-      const { error: rpcErr } = await supabase.rpc('bank_credit', {
-        uid: acc.uid,
-        amount_cents: cents,
-        credit_detail: 'Acreditación manual'
-      });
-      if (rpcErr) {
-        setError(rpcErr.message);
-        return;
-      }
-      setMessage('Acreditación exitosa.');
-      // Refresh account balance
-      const { data: updated } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('uid', acc.uid)
+        .eq('id', user.id)
         .single();
-      setAccounts((prev) => prev.map((a) => (a.uid === acc.uid ? { ...a, balance: updated.balance } : a)));
-      // Reset input
-      setCreditAmount((prev) => ({ ...prev, [acc.uid]: '' }));
-    } catch (err) {
-      setError(err.message);
-    }
-  };
 
-  // Seed or update public entities (e.g. tax and service organizations)
-  const seedEntities = async () => {
-    setError('');
-    setMessage('');
-    const entities = [
-      { company_name: 'ARBA', type: 'entity' },
-      { company_name: 'ARCA', type: 'entity' },
-      { company_name: 'Municipio', type: 'entity' },
-      { company_name: 'ISAP Bank', type: 'entity' }
-    ];
-    for (const ent of entities) {
-      // Check if user exists with this company name and is_entity
-      const { data: existing } = await supabase
-        .from('accounts')
-        .select('uid')
-        .eq('company_name', ent.company_name)
-        .eq('is_entity', true)
-        .maybeSingle();
-      if (!existing) {
-        const alias = `${ent.company_name.toLowerCase().replace(/\s+/g, '').slice(0,6)}${Math.floor(1000 + Math.random() * 9000)}`;
-        const cbu = String(Math.floor(10 ** 21 + Math.random() * 9 * 10 ** 21));
-        // Insert new user row with role='bank' and status='approved'
-        const { data: authData, error: authErr } = await supabase.auth.signUp({
-          email: `${ent.company_name.toLowerCase()}@entities.local`,
-          password: 'changeme123'
-        });
-        if (authErr) {
-          console.error('Auth error seeding entity', authErr.message);
-          continue;
-        }
-        const newUser = authData.user;
-        // Insert into users table as bank entity
-        await supabase.from('users').insert({
-          id: newUser.id,
-          email: newUser.email,
-          company_name: ent.company_name,
-          type: ent.type,
-          role: 'bank',
-          status: 'approved'
-        });
-        // Insert account
-        await supabase.from('accounts').insert({
-          uid: newUser.id,
-          alias,
-          cbu,
-          balance: 0,
-          company_name: ent.company_name,
-          type: ent.type,
-          is_entity: true
-        });
-      }
-    }
-    setMessage('Entidades sembradas/actualizadas.');
-  };
-
-  // Approve loan: credit account and mark loan approved
-  const approveLoan = async (loan) => {
-    setError('');
-    setMessage('');
-    try {
-      // Call RPC to approve loan
-      const { error: rpcErr } = await supabase.rpc('approve_loan', {
-        loan_id: loan.id,
-        approver_uid: user.id
-      });
-      if (rpcErr) {
-        setError(rpcErr.message);
+      if (!myRow || myRow.role !== 'bank') {
+        alert('Acceso solo para empleados.');
+        window.location.href = '/';
         return;
       }
-      setMessage('Préstamo aprobado y acreditado.');
-      // Remove from pending list
-      setLoanRequests((prev) => prev.filter((l) => l.id !== loan.id));
-    } catch (err) {
-      setError(err.message);
-    }
+      setMe(myRow);
+      await refresh();
+    })();
+  }, []);
+
+  const refresh = async () => {
+    setLoading(true);
+
+    const [{ data: pend, error: e1 }, { data: acc, error: e2 }] = await Promise.all([
+      supabase.from('users').select('id,email,company_name,type,created_at')
+        .eq('role','client').eq('status','pending').order('created_at',{ascending:true}),
+      supabase.from('accounts')
+        .select('uid,alias,cbu,balance,company_name,type,is_entity')
+        .order('company_name',{ascending:true})
+    ]);
+
+    if (e1) console.error(e1);
+    if (e2) console.error(e2);
+    setPending(pend || []);
+    setAccounts(acc || []);
+    setLoading(false);
   };
+
+  const approve = async (uid) => {
+    setLoading(true);
+    const { error } = await supabase.rpc('approve_client', {
+      p_uid: uid,
+      p_approver_uid: me.id
+    });
+    if (error) alert(error.message);
+    await refresh();
+  };
+
+  const openCredit = (account) => setModal({ open: true, account });
+  const doCredit = async (amountCents) => {
+    const { account } = modal;
+    setModal({ open: false, account: null });
+    setLoading(true);
+    const { error } = await supabase.rpc('bank_credit', {
+      p_uid: account.uid,
+      p_amount: amountCents,
+      p_detail: 'Acreditación inicial'
+    });
+    if (error) alert(error.message);
+    await refresh();
+  };
+
+  const filtered = accounts.filter(a => {
+    const q = filter.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (a.alias || '').toLowerCase().includes(q) ||
+      (a.cbu || '').toLowerCase().includes(q) ||
+      (a.company_name || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
-    <div>
-      <h1>Panel Administrativo</h1>
-      {/* Clientes pendientes */}
-      <div className="card">
-        <h2>Clientes pendientes</h2>
-        {pendingClients.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Empresa</th>
-                <th>Email</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingClients.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.company_name}</td>
-                  <td>{c.email}</td>
-                  <td>
-                    <button className="button" onClick={() => approveClient(c)}>Aprobar</button>
-                  </td>
+    <div className="min-h-screen bg-slate-900 text-white">
+      <div className="max-w-6xl mx-auto p-6">
+        <header className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Panel de Empleados</h1>
+          <button
+            onClick={() => supabase.auth.signOut().then(()=>location.href='/')}
+            className="px-3 py-2 rounded bg-slate-700 hover:bg-slate-600"
+          >
+            Salir
+          </button>
+        </header>
+
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold mb-3">Pendientes de aprobación</h2>
+          {pending.length === 0 ? (
+            <div className="text-slate-300">No hay clientes pendientes.</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-700">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-800">
+                  <tr>
+                    <th className="text-left p-3">Empresa</th>
+                    <th className="text-left p-3">Email</th>
+                    <th className="text-left p-3">Tipo</th>
+                    <th className="text-left p-3">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pending.map(u => (
+                    <tr key={u.id} className="border-t border-slate-800">
+                      <td className="p-3">{u.company_name || '-'}</td>
+                      <td className="p-3">{u.email}</td>
+                      <td className="p-3">{u.type || '-'}</td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => approve(u.id)}
+                          className="px-3 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600"
+                        >
+                          Aprobar y crear cuenta
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-semibold">Cuentas</h2>
+            <input
+              className="rounded px-3 py-2 text-black"
+              placeholder="Buscar por alias / CBU / empresa"
+              value={filter}
+              onChange={(e)=>setFilter(e.target.value)}
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-700">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-800">
+                <tr>
+                  <th className="text-left p-3">Empresa</th>
+                  <th className="text-left p-3">Alias</th>
+                  <th className="text-left p-3">CBU</th>
+                  <th className="text-right p-3">Saldo</th>
+                  <th className="text-left p-3">Acción</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p>No hay clientes pendientes.</p>
-        )}
+              </thead>
+              <tbody>
+                {filtered.map(a => (
+                  <tr key={a.uid} className="border-t border-slate-800">
+                    <td className="p-3">{a.company_name || (a.is_entity ? 'Entidad pública' : '-')}</td>
+                    <td className="p-3">{a.alias}</td>
+                    <td className="p-3">{a.cbu}</td>
+                    <td className="p-3 text-right">{currency(a.balance)}</td>
+                    <td className="p-3">
+                      {!a.is_entity && (
+                        <button
+                          onClick={() => openCredit(a)}
+                          className="px-3 py-1.5 rounded bg-teal-700 hover:bg-teal-600"
+                        >
+                          Acreditar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td className="p-3 text-slate-300" colSpan={5}>No hay resultados.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {loading && <div className="mt-4 text-sm text-slate-300">Actualizando…</div>}
       </div>
-      {/* Cuentas y acreditación */}
-      <div className="card">
-        <h2>Cuentas</h2>
-        <div style={{ maxWidth: '400px', marginBottom: '1rem' }}>
-          <input
-            type="text"
-            className="input"
-            placeholder="Buscar por alias, CBU o empresa..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        {filteredAccounts.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Empresa</th>
-                <th>Alias</th>
-                <th>CBU</th>
-                <th style={{ textAlign: 'right' }}>Saldo</th>
-                <th>Acreditar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAccounts.map((a) => (
-                <tr key={a.uid}>
-                  <td>{a.company_name}</td>
-                  <td>{a.alias}</td>
-                  <td>{a.cbu}</td>
-                  <td style={{ textAlign: 'right' }}>ARS {(a.balance / 100).toFixed(2)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input"
-                        style={{ width: '90px' }}
-                        value={creditAmount[a.uid] || ''}
-                        onChange={(e) => setCreditAmount((prev) => ({ ...prev, [a.uid]: e.target.value }))}
-                      />
-                      <button className="button" onClick={() => creditAccount(a)}>Acreditar</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p>No hay cuentas disponibles.</p>
-        )}
-      </div>
-      {/* Entidades públicas */}
-      <div className="card">
-        <h2>Entidades públicas</h2>
-        <button className="button" onClick={seedEntities}>Sembrar/Actualizar</button>
-      </div>
-      {/* Solicitudes de préstamos */}
-      <div className="card">
-        <h2>Solicitudes de préstamos</h2>
-        {loanRequests.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Monto</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loanRequests.map((l) => (
-                <tr key={l.id}>
-                  <td>{l.uid}</td>
-                  <td>ARS {(l.amount / 100).toFixed(2)}</td>
-                  <td>
-                    <button className="button" onClick={() => approveLoan(l)}>Aprobar</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p>No hay préstamos pendientes.</p>
-        )}
-      </div>
-      {error && <p className="msg-error">{error}</p>}
-      {message && <p className="msg-success">{message}</p>}
+
+      <CreditModal
+        open={modal.open}
+        account={modal.account}
+        onClose={() => setModal({ open:false, account:null })}
+        onConfirm={doCredit}
+      />
     </div>
   );
 }

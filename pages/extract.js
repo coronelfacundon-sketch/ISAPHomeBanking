@@ -1,164 +1,119 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
-import { useRouter } from 'next/router';
+import { currency } from '../utils/money';
+import { exportToCSV } from '../utils/csv';
 
-/**
- * Extract page allows clients to view their full account statement within a
- * selected date range, see summary totals and export the data to CSV.
- */
-export default function ExtractPage({ user }) {
-  const router = useRouter();
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [movements, setMovements] = useState([]);
-  const [summary, setSummary] = useState({ initial: 0, debits: 0, credits: 0, final: 0 });
-  const [error, setError] = useState('');
+export default function ExtractPage() {
+  const [me, setMe] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // Redirect unauthorized
   useEffect(() => {
-    if (!user) return;
-    if (user.role !== 'client' || user.status !== 'approved') {
-      router.replace('/');
-    }
-  }, [user, router]);
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { window.location.href = '/'; return; }
+      const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single();
+      setMe(profile);
+      await loadRows(user.id);
+      setLoading(false);
+    })();
+  }, []);
 
-  const fetchExtract = async () => {
-    setError('');
-    if (!user) return;
-    let query = supabase
-      .from('movements')
-      .select('*')
-      .eq('uid', user.id)
+  const loadRows = async (uid, s = null, e = null) => {
+    let q = supabase.from('movements')
+      .select('date,concept,detail,debit,credit,balance_after,tx_id,peer_company')
+      .eq('uid', uid)
       .order('date', { ascending: true });
-    if (startDate) query = query.gte('date', startDate);
-    if (endDate) query = query.lte('date', endDate);
-    const { data, error: movErr } = await query;
-    if (movErr) {
-      setError(movErr.message);
-      return;
-    }
-    setMovements(data);
-    // Compute summary
-    let initial = 0;
-    let debits = 0;
-    let credits = 0;
-    let final = 0;
-    if (data.length > 0) {
-      initial = data[0].balance_after - (data[0].credit || 0) + (data[0].debit || 0);
-      data.forEach((m) => {
-        debits += m.debit || 0;
-        credits += m.credit || 0;
-      });
-      final = data[data.length - 1].balance_after;
-    }
-    setSummary({ initial, debits, credits, final });
+    if (s) q = q.gte('date', s);
+    if (e) q = q.lte('date', e);
+    const { data } = await q;
+    setRows(data || []);
   };
 
-  // Format currency from cents to ARS string
-  const formatMoney = (cents) => {
-    return `ARS ${(cents / 100).toFixed(2)}`;
+  const summary = useMemo(() => {
+    const initial = rows.length ? rows[0].balance_after - (rows[0].credit || 0) + (rows[0].debit || 0) : 0;
+    const deb = rows.reduce((a,r)=>a+(r.debit||0),0);
+    const cred = rows.reduce((a,r)=>a+(r.credit||0),0);
+    const final = rows.length ? rows[rows.length-1].balance_after : initial + cred - deb;
+    return { initial, deb, cred, final };
+  }, [rows]);
+
+  const apply = async () => {
+    await loadRows(me.id, start || null, end || null);
   };
 
-  // USD estimation (fixed rate)
-  const estimateUSD = (cents) => {
-    const rate = 350;
-    return `$${(cents / 100 / rate).toFixed(2)} USD`;
-  };
-
-  // Export CSV
+  const printIt = () => window.print();
   const exportCSV = () => {
-    const headers = ['Fecha', 'Detalle', 'Débito', 'Crédito', 'Saldo'];
-    const rows = movements.map((m) => [
-      new Date(m.date).toISOString(),
-      m.concept || m.detail || '',
-      m.debit ? (m.debit / 100).toFixed(2) : '',
-      m.credit ? (m.credit / 100).toFixed(2) : '',
-      (m.balance_after / 100).toFixed(2)
-    ]);
-    const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'extracto.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const data = rows.map(r => ({
+      fecha: new Date(r.date).toLocaleString(),
+      detalle: `${r.concept}${r.peer_company ? ' ('+r.peer_company+')' : ''}`,
+      debito: (r.debit||0)/100,
+      credito: (r.credit||0)/100,
+      saldo: (r.balance_after||0)/100,
+      comprobante: r.tx_id
+    }));
+    exportToCSV(data, 'extracto.csv');
   };
+
+  if (loading) return <div className="p-6 text-white">Cargando…</div>;
 
   return (
-    <div>
-      <h1>Extracto de cuenta</h1>
-      {/* Filtros de fecha */}
-      <div className="card">
-        <h2>Filtros</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column' }}>
-            Desde
-            <input
-              type="date"
-              className="input"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column' }}>
-            Hasta
-            <input
-              type="date"
-              className="input"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </label>
-          <button className="button" onClick={fetchExtract}>Consultar</button>
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <link rel="stylesheet" href="/styles/print.css" />
+      <h1 className="text-2xl font-bold">Extracto</h1>
+
+      <div className="mt-3 grid md:grid-cols-5 gap-2 no-print">
+        <div><div className="text-sm opacity-70 mb-1">Desde</div><input className="rounded px-3 py-2 text-black w-full" type="date" value={start} onChange={e=>setStart(e.target.value)} /></div>
+        <div><div className="text-sm opacity-70 mb-1">Hasta</div><input className="rounded px-3 py-2 text-black w-full" type="date" value={end} onChange={e=>setEnd(e.target.value)} /></div>
+        <div className="flex items-end gap-2">
+          <button onClick={apply} className="rounded px-3 py-2 bg-slate-700 hover:bg-slate-600">Aplicar</button>
+          <button onClick={exportCSV} className="rounded px-3 py-2 bg-slate-700 hover:bg-slate-600">Exportar CSV</button>
+          <button onClick={printIt} className="rounded px-3 py-2 bg-slate-700 hover:bg-slate-600">Imprimir</button>
         </div>
       </div>
-      {/* Resumen */}
-      <div className="card">
-        <h2>Resumen</h2>
-        <p>Saldo inicial: {formatMoney(summary.initial)}</p>
-        <p>Total débitos: {formatMoney(summary.debits)}</p>
-        <p>Total créditos: {formatMoney(summary.credits)}</p>
-        <p>Saldo final: {formatMoney(summary.final)}</p>
-        <p>Estimado en USD: {estimateUSD(summary.final)}</p>
+
+      <div className="mt-4 rounded-xl bg-slate-800 p-4">
+        <h2 className="text-lg font-semibold mb-2">Resumen</h2>
+        <div className="grid md:grid-cols-4 gap-3 text-sm">
+          <div><div className="opacity-70">Saldo inicial</div><div className="font-bold">{currency(summary.initial)}</div></div>
+          <div><div className="opacity-70">Débitos</div><div className="font-bold">{currency(summary.deb)}</div></div>
+          <div><div className="opacity-70">Créditos</div><div className="font-bold">{currency(summary.cred)}</div></div>
+          <div><div className="opacity-70">Saldo final</div><div className="font-bold">{currency(summary.final)}</div></div>
+        </div>
       </div>
-      {/* Tabla de movimientos */}
-      <div className="card">
-        <h2>Movimientos</h2>
-        {movements.length > 0 ? (
-          <table className="table">
-            <thead>
+
+      <div className="mt-4 rounded-xl bg-slate-800 p-4">
+        <h2 className="text-lg font-semibold mb-2">Movimientos</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-700">
               <tr>
-                <th>Fecha</th>
-                <th>Detalle</th>
-                <th style={{ textAlign: 'right' }}>Débito</th>
-                <th style={{ textAlign: 'right' }}>Crédito</th>
-                <th style={{ textAlign: 'right' }}>Saldo</th>
+                <th className="text-left p-2">Fecha</th>
+                <th className="text-left p-2">Detalle</th>
+                <th className="text-right p-2">Débito</th>
+                <th className="text-right p-2">Crédito</th>
+                <th className="text-right p-2">Saldo</th>
+                <th className="text-left p-2">Comprobante</th>
               </tr>
             </thead>
             <tbody>
-              {movements.map((m) => (
-                <tr key={m.id}>
-                  <td>{new Date(m.date).toLocaleDateString()}</td>
-                  <td>{m.concept || m.detail || ''}</td>
-                  <td style={{ textAlign: 'right' }}>{m.debit ? formatMoney(m.debit) : '-'}</td>
-                  <td style={{ textAlign: 'right' }}>{m.credit ? formatMoney(m.credit) : '-'}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(m.balance_after)}</td>
+              {rows.map(r => (
+                <tr key={r.tx_id + r.date} className="border-t border-slate-700">
+                  <td className="p-2">{new Date(r.date).toLocaleString()}</td>
+                  <td className="p-2">{r.concept}{r.peer_company ? ` (${r.peer_company})` : ''}</td>
+                  <td className="p-2 text-right">{r.debit ? currency(r.debit) : ''}</td>
+                  <td className="p-2 text-right">{r.credit ? currency(r.credit) : ''}</td>
+                  <td className="p-2 text-right">{currency(r.balance_after)}</td>
+                  <td className="p-2"><a className="underline" href={`/receipt?tx=${r.tx_id}`}>Ver</a></td>
                 </tr>
               ))}
+              {rows.length === 0 && <tr><td className="p-2 text-slate-300" colSpan={6}>Sin movimientos</td></tr>}
             </tbody>
           </table>
-        ) : (
-          <p>No hay movimientos en el periodo seleccionado.</p>
-        )}
+        </div>
       </div>
-      {/* Exportar e imprimir */}
-      <div className="card" style={{ display: 'flex', gap: '1rem' }}>
-        <button className="button" onClick={exportCSV}>Exportar CSV</button>
-        <button className="button" onClick={() => window.print()}>Imprimir</button>
-      </div>
-      {error && <p className="msg-error">{error}</p>}
     </div>
   );
 }

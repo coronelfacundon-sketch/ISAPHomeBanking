@@ -1,0 +1,17 @@
+
+/* Estilos de impresión para comprobantes y extractos */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print { display: none !important; }
+  .print-card {
+    border: 1px solid #000;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #000; padding: 6px; }
+  .text-right { text-align: right; }
+}
